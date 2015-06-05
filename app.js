@@ -125,7 +125,9 @@ function createHAPServer(name, services) {
                 designedMinValue: services[j].characteristics[k].designedMinValue,
                 designedMaxValue: services[j].characteristics[k].designedMaxValue,
                 designedMinStep: services[j].characteristics[k].designedMinStep,
-                unit: services[j].characteristics[k].unit
+                unit: services[j].characteristics[k].unit,
+                onRegister: services[j].characteristics[k].onRegister,
+                locals: services[j].characteristics[k].locals
             };
 
             var characteristic = new characteristic_Factor.Characteristic(options, services[j].characteristics[k].onUpdate);
