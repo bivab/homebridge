@@ -110,7 +110,10 @@ PilightPlatform.prototype = {
               case "elro_800_switch":
                 accessory = PilightSwitch;
                 break;
-              default: // arping, sunriseset, openweathermap, datetime, generic_label
+              case 'openweathermap':
+                accessory = PilightThermostat;
+                break;
+              default: // arping, sunriseset, datetime, generic_label
                 that.log("Unsupported pilight device (" + gui['name']
                          + ") with protocol " + device['protocol']);
                 continue;
@@ -118,7 +121,7 @@ PilightPlatform.prototype = {
             that.log("Adding pilight device (" + gui['name'] + ") with protocol "
                      + device['protocol']);
             collected.push(
-                    new accessory(that.log, device_name, gui['name'], client));
+                    new accessory(that.log, device_name, gui['name'], proto, device, client));
             break;  // we found a supported protocol, so we are done with this device
           }
         }
@@ -130,7 +133,7 @@ PilightPlatform.prototype = {
   }
 }
 
-function PilightSwitch(log, idx, name, client) {
+function PilightSwitch(log, idx, name, protocol, info, client) {
   // device info
   log("Name: "+idx);
   this.idx = idx;
@@ -138,7 +141,10 @@ function PilightSwitch(log, idx, name, client) {
   this.log = log;
   this.client = client;
   this.registry = [];
+  this.info = info;
+  this.protocol = protocol;
 }
+
 
 PilightSwitch.prototype = {
 
@@ -185,7 +191,7 @@ PilightSwitch.prototype = {
         onUpdate: null,
         perms: ["pr"],
         format: "string",
-        initialValue: this.name,
+        initialValue: that.name,
         supportEvents: false,
         supportBonjour: false,
         manfDescription: "Name of the accessory",
@@ -238,7 +244,7 @@ PilightSwitch.prototype = {
         onUpdate: null,
         perms: ["pr"],
         format: "string",
-        initialValue: this.name + " outlet service",
+        initialValue: that.name + " outlet service",
         supportEvents: true,
         supportBonjour: false,
         manfDescription: "Name of service",
@@ -269,5 +275,194 @@ PilightSwitch.prototype = {
   }
 };
 
-module.exports.accessory = [PilightSwitch];
+// XXX refactory and merge with Switch
+function PilightThermostat(log, idx, name, protocol, info, client) {
+  // device info
+  log("Name: "+idx);
+  this.idx = idx;
+  this.name = name;
+  this.log = log;
+  this.client = client;
+  this.registry = [];
+  this.info = info;
+  this.protocol = protocol;
+}
+
+
+// XXX merge with Switch prototype and extract common prototype
+PilightThermostat.prototype = {
+
+  registerForUpdates: function(characteristic) {
+    this.log("[PilightThermostat.registerForUpdates] Registering device "+this.idx
+             + " for updates on characteristic '"+characteristic.manfDescription+"'");
+
+    this.registry.push(characteristic);
+    this.client.register(this.idx, this);
+  },
+
+  updateCharacteristics: function(values) {
+    this.log(values);
+    var newValue;
+    for(var c of this.registry) {
+      switch(c.type) {
+        case types.CURRENT_TEMPERATURE_CTYPE:
+          newValue = values['temperature'];
+          break;
+        case types.CURRENT_RELATIVE_HUMIDITY_CTYPE:
+          newValue = values['humidity'];
+          break;
+      }
+      if(c.value === newValue) {
+        this.log("[PilightThermostat.updateCharacteristics] No state change "
+                 + "detected on characteristic, skiping event");
+        continue;
+      }
+      this.log("[PilightThermostat.updateCharacteristics] Updating device "
+               +this.name + " to value "+newValue+" on characteristic '"
+               +JSON.stringify(c.manfDescription)+"'");
+    }
+    c.updateValue(newValue);
+  },
+
+  getServices: function() {
+    var that = this;
+    return [{
+      sType: types.ACCESSORY_INFORMATION_STYPE,
+      characteristics: [{
+        cType: types.NAME_CTYPE,
+        onUpdate: null,
+        perms: ["pr"],
+        format: "string",
+        initialValue: that.name + "Thermostat 1",
+        supportEvents: false,
+        supportBonjour: false,
+        manfDescription: "Bla",
+        designedMaxLength: 255
+        },{
+        cType: types.MANUFACTURER_CTYPE,
+        onUpdate: null,
+        perms: ["pr"],
+        format: "string",
+        initialValue: "Oltica",
+        supportEvents: false,
+        supportBonjour: false,
+        manfDescription: "Bla",
+        designedMaxLength: 255
+        },{
+        cType: types.MODEL_CTYPE,
+        onUpdate: null,
+        perms: ["pr"],
+        format: "string",
+        initialValue: "Rev-1",
+        supportEvents: false,
+        supportBonjour: false,
+        manfDescription: "Bla",
+        designedMaxLength: 255
+        },{
+        cType: types.SERIAL_NUMBER_CTYPE,
+        onUpdate: null,
+        perms: ["pr"],
+        format: "string",
+        initialValue: "A1S2NASF88EW",
+        supportEvents: false,
+        supportBonjour: false,
+        manfDescription: "Bla",
+        designedMaxLength: 255
+        },{
+        cType: types.IDENTIFY_CTYPE,
+        onUpdate: null,
+        perms: ["pw"],
+        format: "bool",
+        initialValue: false,
+        supportEvents: false,
+        supportBonjour: false,
+        manfDescription: "Identify Accessory",
+        designedMaxLength: 1
+      }]
+      },{
+      sType: types.THERMOSTAT_STYPE,
+      characteristics: [{
+          cType: types.NAME_CTYPE,
+          onUpdate: null,
+          perms: ["pr"],
+          format: "string",
+          initialValue: that.name + "Thermostat Control",
+          supportEvents: false,
+          supportBonjour: false,
+          manfDescription: "Bla",
+          designedMaxLength: 255
+        },{
+          cType: types.CURRENTHEATINGCOOLING_CTYPE,
+          perms: ["pr","ev"],
+          format: "int",
+          initialValue: 0,
+          supportEvents: false,
+          supportBonjour: false,
+          manfDescription: "Current Mode",
+          designedMaxLength: 1,
+          designedMinValue: 0,
+          designedMaxValue: 2,
+          designedMinStep: 1,
+        },{
+          cType: types.TARGETHEATINGCOOLING_CTYPE,
+          perms: ["pr","ev"],
+          format: "int",
+          initialValue: 0,
+          supportEvents: false,
+          supportBonjour: false,
+          manfDescription: "Target Mode",
+          designedMinValue: 0,
+          designedMaxValue: 3,
+          designedMinStep: 1,
+        },{
+          cType: types.CURRENT_TEMPERATURE_CTYPE,
+          onRegister: function(characteristic) { that.registerForUpdates(characteristic) },
+          onUpdate: null,
+          perms: ["pr","ev"],
+          format: "int",
+          initialValue: parseFloat(that.info['temperature']),
+          supportEvents: false,
+          supportBonjour: false,
+          manfDescription: "Current Temperature",
+          unit: "celsius"
+        },{
+          cType: types.TARGET_TEMPERATURE_CTYPE,
+          onUpdate: null,
+          perms: ["pr","ev"],
+          format: "int",
+          initialValue: parseFloat(that.info['temperature']),
+          supportEvents: false,
+          supportBonjour: false,
+          manfDescription: "Target Temperature",
+          designedMinValue: 16,
+          designedMaxValue: 38,
+          designedMinStep: 1,
+          unit: "celsius"
+        },{
+          cType: types.CURRENT_RELATIVE_HUMIDITY_CTYPE,
+          onRegister: function(characteristic) { that.registerForUpdates(characteristic) },
+          onUpdate: null,
+          perms: ["pr","ev"],
+          format: "float",
+          initialValue: parseFloat(that.info['humidity']),
+          supportEvents: false,
+          supportBonjour: false,
+          manfDescription: "Current relative humidity",
+          unit: "percentage",
+          designedMinValue: 0,
+          designedMaxValue: 100,
+          designedMinStep: 1
+        },{
+          cType: types.TEMPERATURE_UNITS_CTYPE,
+          perms: ["pr","ev"],
+          format: "int",
+          initialValue: 0,
+          supportEvents: false,
+          supportBonjour: false,
+          manfDescription: "Unit",
+        }]
+      }];
+  }
+};
+module.exports.accessory = [PilightSwitch, PilightThermostat];
 module.exports.platform = PilightPlatform;
