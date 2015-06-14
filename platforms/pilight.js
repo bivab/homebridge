@@ -4,6 +4,7 @@ var net = require('net')
 /* TODO:
  * - send keepalive
  * - auto reconnect on disconnect
+ * - wait for success after command and then send the next
  * - support more devices
  */
 
