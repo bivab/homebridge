@@ -8,6 +8,20 @@ var net = require('net')
  * - support more devices
  */
 
+PilightDeviceTypes = {
+  RAW: 0,
+  SWITCH: 1,
+  DIMMER: 2,
+  WEATHER: 3,
+  RELAY: 4,
+  SCREEN: 5,
+  CONTACT: 6,
+  PENDINGSW: 7,
+  DATETIME: 8,
+  XBMC: 9,
+  LIRC: 10,
+  WEBCAM: 11
+}
 
 function PilightPlatform(log, config){
   this.name = config['name']
