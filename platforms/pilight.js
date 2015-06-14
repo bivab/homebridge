@@ -8,6 +8,8 @@ var net = require('net')
  * - support more devices
  */
 
+var DEBUG = true;
+
 PilightDeviceTypes = {
   RAW: 0,
   SWITCH: 1,
@@ -36,45 +38,22 @@ function PilightPlatform(log, config){
 
 function PilightClient(log, platform) {
     var that= this;
-    var bootstrap = function() {
-        log('connected to server!');
-        var cmd = {
-          "action": "identify",
-          "options": {
-            "config": 1
-          }
-        };
-        that.send(cmd);
-    }
 
     this.log = log;
+    this.platform = platform;
     this.registry = [];
-    this.socket = net.connect({host:platform.host, port:platform.port}, bootstrap);
 
-    this.socket.on('data', function(data) {
-      try {
-        data = JSON.parse(data);
-      } catch(e) {
-        if (e instanceof SyntaxError) { that.log("SyntaxError in " + data.toString()); }
-        else { that.log("Error " + JSON.stringify(e)); }
-      }
-
-      if(data['origin'] !== 'update') {
-        return
-      }
-      that.updateDevices(data['devices'], data['values']);
-    });
-
-    this.socket.on('end', function() {
-      that.log('disconnected from server');
-    });
+    this.connect();
+    this.startHeartBeat();
 }
+
 PilightClient.prototype = {
   send: function(cmd) {
     var msg = JSON.stringify(cmd);
     this.log("[PilightClient.send] "+msg);
     this.socket.write(msg);
   },
+
 
   register: function(idx, accessory) {
     this.registry[idx] = accessory;
@@ -90,6 +69,81 @@ PilightClient.prototype = {
                + device);
       dev.updateCharacteristics(values);
     }
+  },
+
+  startHeartBeat: function() {
+    var that = this;
+    var cb = function() { that.socket.write("HEART\n", "utf-8"); };
+    this.heartBeatInterval = setInterval(cb, 1000);
+  },
+
+  onBeat: function() {
+    if(DEBUG) { this.log("BEAT");}
+
+    if(this.heartBeatTimeout) {
+      clearTimeout(this.heartBeatTimeout);
+    }
+
+    var that = this;
+    var reconnectDelay = 10000;
+    var reconnect = function() {
+      that.log('[PilightClient.reconnect] Trying reconnect');
+      try{
+        that.socket.end();
+        that.socket.destroy();
+      }
+      finally {
+        that.connect();
+      }
+    }
+    this.heartBeatTimeout = setTimeout(reconnect, reconnectDelay);
+  },
+
+
+  connect: function() {
+    var that = this;
+    var bootstrap = function() {
+      that.log('connected to server!');
+      var cmd = {
+        "action": "identify",
+        "options": {
+          "config": 1
+        }
+      };
+      that.send(cmd);
+    }
+
+    this.socket = net.connect({host:this.platform.host, port:this.platform.port}, bootstrap);
+
+    this.socket.on('data', function(data) {
+      data = data.toString();
+      for(msg of data.split('\n')) {
+        if(msg.length === 0) { continue; }
+
+        if(msg === "BEAT") {
+          that.onBeat();
+          continue;
+        }
+
+        try {
+          data = JSON.parse(data);
+        } catch(e) {
+          if (e instanceof SyntaxError) { that.log("SyntaxError in " + msg); }
+          else { that.log("Error " + JSON.stringify(e)); }
+          continue;
+        }
+        if(data['origin'] !== 'update') {
+          continue;
+        }
+        that.updateDevices(data['devices'], data['values']);
+      }
+    });
+
+    this.socket.on('end', function() {
+      clearTimeout(that.heartBeatTimeout);
+      clearTimeout(that.heartBeatInterval);
+      that.log('disconnected from server');
+    });
   }
 }
 
