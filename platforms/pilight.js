@@ -312,7 +312,7 @@ PilightThermostat.prototype = {
           newValue = values['humidity'];
           break;
       }
-      if(c.value === newValue) {
+      if(newValue === undefined || c.value === newValue) {
         this.log("[PilightThermostat.updateCharacteristics] No state change "
                  + "detected on characteristic, skiping event");
         continue;
