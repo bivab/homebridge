@@ -370,7 +370,6 @@ PilightThermostat.prototype = {
   },
 
   updateCharacteristics: function(values) {
-    this.log(values);
     var newValue;
     for(var c of this.registry) {
       switch(c.type) {
