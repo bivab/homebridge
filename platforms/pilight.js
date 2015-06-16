@@ -37,7 +37,7 @@ function PilightPlatform(log, config){
 
 
 function PilightClient(log, platform) {
-    var that= this;
+    var that = this;
 
     this.log = log;
     this.platform = platform;
@@ -74,7 +74,7 @@ PilightClient.prototype = {
   startHeartBeat: function() {
     var that = this;
     var cb = function() { that.socket.write("HEART\n", "utf-8"); };
-    this.heartBeatInterval = setInterval(cb, 1000);
+    this.heartBeatInterval = setInterval(cb, 20000);
   },
 
   onBeat: function() {
@@ -85,7 +85,7 @@ PilightClient.prototype = {
     }
 
     var that = this;
-    var reconnectDelay = 10000;
+    var reconnectDelay = 30000;
     var reconnect = function() {
       that.log('[PilightClient.reconnect] Trying reconnect');
       try{
