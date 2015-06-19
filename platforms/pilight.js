@@ -176,6 +176,7 @@ PilightPlatform.prototype = {
             that.log("[PilightPlatform.accessories] " + gui['name'] + " : " + proto);
 
             switch(proto) {
+              case "brennenstuhl":
               case "elro_800_switch":
                 accessory = PilightSwitch;
                 break;
