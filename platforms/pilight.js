@@ -77,8 +77,11 @@ PilightClient.prototype = {
     this.heartBeatInterval = setInterval(cb, 60000);
   },
 
-  onBeat: function() {
-    if(DEBUG) { this.log("BEAT");}
+  onBeat: function() { 
+    if(DEBUG) {
+      var stamp =  new Date(Date.now());
+      this.log("BEAT " + stamp);
+    }
 
     if(this.heartBeatTimeout) {
       clearTimeout(this.heartBeatTimeout);
