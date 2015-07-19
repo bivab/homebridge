@@ -54,7 +54,7 @@ function loadAccessories() {
         var services = accessory.getServices();
 
         // Create the HAP server for this accessory
-        createHAPServer(name, services);
+        createHAPServer(name, services, accessory.transportCategory);
     }
 }
 
@@ -89,7 +89,7 @@ function loadPlatforms() {
                 // hooks in and out of HomeKit for the HAP-NodeJS server.
                 var services = accessory.getServices();
                 // Create the HAP server for this accessory
-                createHAPServer(accessory.name, services);
+                createHAPServer(accessory.name, services, accessory.transportCategory);
             }
             accessories.push.apply(accessories, foundAccessories);
         })
@@ -101,10 +101,10 @@ function loadPlatforms() {
 //
 
 // Pull in required HAP-NodeJS stuff
-var accessory_Factor = new require("./lib/HAP-NodeJS/Accessory.js");
-var accessoryController_Factor = new require("./lib/HAP-NodeJS/AccessoryController.js");
-var service_Factor = new require("./lib/HAP-NodeJS/Service.js");
-var characteristic_Factor = new require("./lib/HAP-NodeJS/Characteristic.js");
+var accessory_Factor = new require("HAP-NodeJS/Accessory.js");
+var accessoryController_Factor = new require("HAP-NodeJS/AccessoryController.js");
+var service_Factor = new require("HAP-NodeJS/Service.js");
+var characteristic_Factor = new require("HAP-NodeJS/Characteristic.js");
 
 // Each accessory has its own little server. We'll need to allocate some ports for these servers
 var nextPort = 51826;
@@ -113,7 +113,7 @@ var accessoryServers = [];
 var accessoryControllers = [];
 var usernames = {};
 
-function createHAPServer(name, services) {
+function createHAPServer(name, services, transportCategory) {
     var accessoryController = new accessoryController_Factor.AccessoryController();
 
     //loop through services
@@ -165,7 +165,7 @@ function createHAPServer(name, services) {
     // hardcode the PIN to something random (same PIN as HAP-NodeJS sample accessories)
     var pincode = "031-45-154";
 
-    var accessory = new accessory_Factor.Accessory(name, username, storage, parseInt(nextPort), pincode, accessoryController);
+    var accessory = new accessory_Factor.Accessory(name, username, storage, parseInt(nextPort), pincode, accessoryController, transportCategory);
     accessoryServers[nextServer] = accessory;
     accessoryControllers[nextServer] = accessoryController;
     accessory.publishAccessory();
