@@ -52,6 +52,16 @@
         {
             "platform": "LogitechHarmony",
             "name": "Living Room Harmony Hub"
+        },
+        {
+            "platform": "Sonos",
+            "name": "Sonos",
+            "play_volume": 25
+        },
+        {
+            "platform": "YamahaAVR",
+            "play_volume": -35,
+            "setMainInputTo": "AirPlay" 
         }
     ],
 
@@ -69,12 +79,6 @@
             // "requiredDeviceId", "<ID of door if you have multiple doors, prompted by shim during startup if needed>",
             "username": "your-liftmaster-username",
             "password" : "your-liftmaster-password"
-        },
-        {
-            "accessory": "Sonos",
-            "name": "Speakers",
-            "description": "This shim supports Sonos devices on the same network as this server. It acts as a simple switch that calls play() or pause() on the Sonos, so it's only useful for pausing and resuming tracks or radio stations that are already in the queue. When 'play_volume' is nonzero, the volume will be reset to that value when it turns the Sonos on.",
-            "play_volume": 25
         },
         {
             "accessory": "Lockitron",
@@ -139,15 +143,29 @@
             "port" : 4999, // Port the SER2SOCK process is running on
             "pin": "1234" // PIN used for arming / disarming
         },
-        {                                                                                                                                                                                                                                                                                                          |
-            "accessory": "MiLight",                                                                                                                                                                                                                                                                                |
-            "name": "Lamp",                                                                                                                                                                                                                                                                                        |
-            "ip_address": "255.255.255.255", // IP Address of the WiFi Bridge, or 255.255.255.255 to broadcast to all                                                                                                                                                                                              |
-            "port": 8899, // Default port 8899 (50000 for v1 or v2 bridge)                                                                                                                                                                                                                                         |
-            "zone": 1, // Zone to address commands to (not used for rgb only bulbs)                                                                                                                                                                                                                                |
-            "type": "rgbw", // Bulb type (rgbw, rgb, white)                                                                                                                                                                                                                                                        |
-            "delay": 35, // Delay between commands sent to the WiFi bridge (default 35)                                                                                                                                                                                                                            |
-            "repeat": 3 // Number of times each command is repeated for reliability (default 3)                                                                                                                                                                                                                    |
+        {
+            "accessory":"MiLight",
+            "name": "Lamp",
+            "ip_address": "255.255.255.255", // IP Address of the WiFi Bridge, or 255.255.255.255 to broadcast to all
+            "port": 8899, // Default port 8899 (50000 for v1 or v2 bridge)
+            "zone": 1, // Zone to address commands to (not used for rgb only bulbs)
+            "type": "rgbw", // Bulb type (rgbw, rgb, white)
+            "delay": 35, // Delay between commands sent to the WiFi bridge (default 35)
+            "repeat": 3 // Number of times each command is repeated for reliability (default 3)
+        },
+        {
+            "accessory": "Tesla",
+            "name": "Tesla",
+            "description": "This shim supports controlling climate control on the Tesla Model S.",
+            "username": "tesla_email",
+            "password" : "tesla_password"
+        },
+        {
+            "accessory": "Hyperion",
+            "name": "TV Backlight",
+            "description": "Control the Hyperion TV backlight server. https://github.com/tvdzwan/hyperion"
+            "host": "localhost", 
+            "port": "19444"
         }
     ]
 }
