@@ -8,6 +8,22 @@
 // - Added support for Scenes
 // - Sorting device names
 //
+// 22 July 2015 [lukeredpath]
+// - Added SSL and basic auth support
+//
+// 26 August 2015 [EddyK69]
+// - Added parameter in config.json: 'loadscenes' for enabling/disabling loading scenes
+// - Fixed issue with dimmer-range; was 0-100, should be 0-16
+//
+// 27 August 2015 [EddyK69]
+// - Fixed issue that 'on/off'-type lights showed as dimmers in HomeKit. Checking now on SwitchType instead of HaveDimmer
+// - Fixed issue that 'on-off'-type lights would not react on Siri 'Switch on/off light'; On/Off types are now handled as Lights instead of Switches
+//   (Cannot determine if 'on/off'-type device is a Light or a Switch :( )
+//
+// 14 September 2015 [lukeredpath]
+// - Fixed incorrect dimmer range for LightwaveRF lights (0-32 required, MaxDimLevel should be honored)
+//
+//
 // Domoticz JSON API required
 // https://www.domoticz.com/wiki/Domoticz_API/JSON_URL's#Lights_and_switches
 //
@@ -18,7 +34,8 @@
 //         "name": "Domoticz",
 //         "server": "127.0.0.1",
 //         "port": "8080",
-//         "roomid": 123 (0=no roomplan)
+//         "roomid": 123,  (0=no roomplan)
+//         "loadscenes": 1 (0=disable scenes)
 //     }
 // ],
 //
@@ -47,6 +64,10 @@ function DomoticzPlatform(log, config){
 	if (typeof config["roomid"] != 'undefined') {
 		this.roomid = config["roomid"];
 	}
+	this.loadscenes = 1;
+	if (typeof config["loadscenes"] != 'undefined') {
+		this.loadscenes = config["loadscenes"];
+	}
 }
 
 function sortByKey(array, key) {
@@ -66,11 +87,17 @@ DomoticzPlatform.prototype = {
   },
   
 	accessories: function(callback) {
-	    this.log("Fetching Domoticz lights and switches...");
-	    var that = this;
-	    var foundAccessories = [];
-	    if (this.roomid == 0) {
+		this.log("Fetching Domoticz lights and switches...");
+		var that = this;
+		var foundAccessories = [];
+		
+		// mechanism to ensure callback is only executed once all requests complete
+		var asyncCalls = 0;
+		function callbackLater() { if (--asyncCalls == 0) callback(foundAccessories); }
+		
+		if (this.roomid == 0) {
 			//Get Lights
+			asyncCalls++;
 			request.get({
 				url: this.urlForQuery("type=devices&filter=light&used=true&order=Name"),
 				json: true
@@ -79,18 +106,20 @@ DomoticzPlatform.prototype = {
 					if (json['result'] != undefined) {
 						var sArray=sortByKey(json['result'],"Name");
 						sArray.map(function(s) {
-							accessory = new DomoticzAccessory(that.log, that, false, s.idx, s.Name, s.HaveDimmer, s.MaxDimLevel, (s.SubType=="RGB")||(s.SubType=="RGBW"));
+							var havedimmer = (s.SwitchType == 'Dimmer')
+							accessory = new DomoticzAccessory(that.log, that, false, s.idx, s.Name, havedimmer, s.MaxDimLevel, (s.SubType=="RGB")||(s.SubType=="RGBW"));
 							foundAccessories.push(accessory);
 						})
 					}
-					callback(foundAccessories);
+					callbackLater();
 				} else {
 					that.log("There was a problem connecting to Domoticz. (" + err + ")");
 				}
 			});
-	    }
-	    else {
+		}
+		else {
 			//Get all devices specified in the room
+			asyncCalls++;
 			request.get({
 				url: this.urlForQuery("type=devices&plan=" + this.roomid),
 				json: true
@@ -101,36 +130,39 @@ DomoticzPlatform.prototype = {
 						sArray.map(function(s) {
 							//only accept switches for now
 							if (typeof s.SwitchType != 'undefined') {
-								accessory = new DomoticzAccessory(that.log, that, false, s.idx, s.Name, s.HaveDimmer, s.MaxDimLevel, (s.SubType=="RGB")||(s.SubType=="RGBW"));
+								var havedimmer = (s.SwitchType == 'Dimmer')
+								accessory = new DomoticzAccessory(that.log, that, false, s.idx, s.Name, havedimmer, s.MaxDimLevel, (s.SubType=="RGB")||(s.SubType=="RGBW"));
 								foundAccessories.push(accessory);
 							}
 						})
 					}
-					callback(foundAccessories);
+					callbackLater();
 				} else {
 					that.log("There was a problem connecting to Domoticz.");
 				}
 			});
-	    }
+		}
 		//Get Scenes
-		foundAccessories = [];
-		request.get({
-			url: this.urlForQuery("type=scenes"),
-	      	json: true
-	    }, function(err, response, json) {
-			if (!err && response.statusCode == 200) {
-				if (json['result'] != undefined) {
-					var sArray=sortByKey(json['result'],"Name");
-					sArray.map(function(s) {
-						accessory = new DomoticzAccessory(that.log, that, true, s.idx, s.Name, false, 0, false);
-						foundAccessories.push(accessory);
-	          		})
+		if (this.loadscenes == 1) {
+			asyncCalls++;
+			request.get({
+				url: this.urlForQuery("type=scenes"),
+				json: true
+			}, function(err, response, json) {
+				if (!err && response.statusCode == 200) {
+					if (json['result'] != undefined) {
+						var sArray=sortByKey(json['result'],"Name");
+						sArray.map(function(s) {
+							accessory = new DomoticzAccessory(that.log, that, true, s.idx, s.Name, false, 0, false);
+							foundAccessories.push(accessory);
+						})
+					}
+					callbackLater();
+				} else {
+					that.log("There was a problem connecting to Domoticz.");
 				}
-				callback(foundAccessories);
-			} else {
-				that.log("There was a problem connecting to Domoticz.");
-	      	}
-		});
+			});
+		}
 	}
 }
 
@@ -158,6 +190,7 @@ DomoticzAccessory.prototype = {
 				url = this.platform.urlForQuery("type=command&param=setcolbrightnessvalue&idx=" + this.idx + "&hue=" + value + "&brightness=100" + "&iswhite=false");
 			}
 			else if (c == "setLevel") {
+                                value = this.dimmerLevelForValue(value)
 				url = this.platform.urlForQuery("type=command&param=switchlight&idx=" + this.idx + "&switchcmd=Set%20Level&level=" + value);
 			}
 			else if (value != undefined) {
@@ -180,10 +213,18 @@ DomoticzAccessory.prototype = {
 				that.log("There was a problem sending command " + c + " to" + that.name);
 				that.log(url);
 			} else {
-				that.log(that.name + " sent command " + c);
+				that.log(that.name + " sent command " + c + " (value: " + value + ")");
       		}
       	})
   	},
+
+  // translates the HomeKit dim level as a percentage to whatever scale the device requires
+  dimmerLevelForValue: function(value) {
+    if (this.MaxDimLevel == 100) {
+      return value;
+    }
+    return Math.round((value / 100.0) * this.MaxDimLevel) 
+  },
 
   informationCharacteristics: function() {
     return [
@@ -311,11 +352,11 @@ DomoticzAccessory.prototype = {
   },
 
   sType: function() {
-    if (this.HaveDimmer == true) {
+    //if (this.HaveDimmer == true) {
       return types.LIGHTBULB_STYPE
-    } else {
-      return types.SWITCH_STYPE
-    }
+    //} else {
+    //  return types.SWITCH_STYPE
+    //}
   },
 
   getServices: function() {
