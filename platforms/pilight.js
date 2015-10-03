@@ -43,18 +43,34 @@ function PilightClient(log, platform) {
     this.log = log;
     this.platform = platform;
     this.registry = [];
+    this.queue = [];
 
     this.connect();
     this.startHeartBeat();
+    this.startSending();
 }
 
 PilightClient.prototype = {
   send: function(cmd, callback) {
     var msg = JSON.stringify(cmd);
     this.log("[PilightClient.send] "+msg);
-    this.socket.write(msg, callback);
+    this.queue.push([msg, callback]);
   },
+  
 
+  startSending: function() {
+    var that = this;
+    var cb = function() {
+      var msg = that.queue.shift();
+      if (msg === undefined || msg[0] == undefined) {
+        return;
+      }
+      that.log(that.queue);
+      that.log("[PilightClient.send] "+msg[0]);
+      that.socket.write(msg[0], msg[1]);
+    };
+    setInterval(cb, 500);
+  },
 
   register: function(idx, accessory) {
     this.registry[idx] = accessory;
