@@ -315,7 +315,7 @@ PilightTemperatureSensor.prototype = {
       return;
     }
     if('temperature' in values) {
-      console.log(values);
+      this.log(values);
       this.info = values;
     }
   },
