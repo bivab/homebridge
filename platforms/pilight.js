@@ -295,11 +295,13 @@ PilightTemperatureSensor.prototype = {
 
   update: function(values) {
     var newValue;
-    console.log(values);
     if(values === undefined) {
       return;
     }
-    this.info = values;
+    if('temperature' in values) {
+      console.log(values);
+      this.info = values;
+    }
   },
 
   getCurrentTemperature: function(callback)  {
