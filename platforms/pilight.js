@@ -1,4 +1,5 @@
-var types = require("HAP-NodeJS/accessories/types.js");
+var Service = require("HAP-NodeJS").Service;
+var Characteristic = require("HAP-NodeJS").Characteristic;
 var request = require('request');
 var net = require('net')
 /* TODO:
@@ -7,6 +8,8 @@ var net = require('net')
  */
 
 var DEBUG = true;
+
+
 
 PilightDeviceTypes = {
   RAW: 0,
@@ -46,10 +49,10 @@ function PilightClient(log, platform) {
 }
 
 PilightClient.prototype = {
-  send: function(cmd) {
+  send: function(cmd, callback) {
     var msg = JSON.stringify(cmd);
     this.log("[PilightClient.send] "+msg);
-    this.socket.write(msg);
+    this.socket.write(msg, callback);
   },
 
 
@@ -65,7 +68,7 @@ PilightClient.prototype = {
       }
       this.log("[PilightClient.updateDevices] External update on device "
                + device);
-      dev.updateCharacteristics(values);
+      dev.update(values);
     }
   },
 
@@ -182,7 +185,7 @@ PilightPlatform.prototype = {
                 accessory = PilightSwitch;
                 break;
               case 'openweathermap':
-                accessory = PilightThermostat;
+                accessory = PilightTemperatureSensor;
                 break;
               default: // arping, sunriseset, datetime, generic_label
                 that.log("Unsupported pilight device (" + gui['name']
@@ -211,9 +214,10 @@ function PilightSwitch(log, idx, name, protocol, info, client) {
   this.name = name;
   this.log = log;
   this.client = client;
-  this.registry = [];
-  this.info = info;
   this.protocol = protocol;
+
+  this.powerState = info['state'] === 'on';
+  this.registerForUpdates(this.idx, this);
 }
 
 
@@ -221,318 +225,104 @@ PilightSwitch.prototype = {
 
   registerForUpdates: function(characteristic) {
     this.log("[PilightSwitch.registerForUpdates] Registering device "+this.idx
-             + " for updates on characteristic '"+characteristic.manfDescription+"'");
-
-    this.registry.push(characteristic);
+             + " for updates");
     this.client.register(this.idx, this);
   },
 
-  updateCharacteristics: function(values) {
-    var newValue = (values['state'] === 'on')*1;
-    for(var c of this.registry) {
-      if(c.value === newValue) {
-        this.log("[PilightSwitch.updateCharacteristics] No state change "
-                 + "detected on characteristic, skiping event");
-        continue;
-      }
-      this.log("[PilightSwitch.updateCharacteristics] Updating device "
-               +this.name + " to value "+newValue+" on characteristic '"
-               +JSON.stringify(c.manfDescription)+"'");
-      c.updateValue(newValue);
-    }
+  update: function(values) {
+    this.powerState = values['state'] === 'on';
   },
 
-  setPowerState: function(powerOn) {
-    var that = this;
+  setPowerState: function(powerOn, callback) {
     this.log("[PilightSwitch.setPowerState] "+powerOn);
-    this.client.send({
+    var cb = function() {
+      callback();
+      this.powerState = powerOn;
+    }.bind(this);
+    var cmd = {
           "action": "control",
           "code": {
-            "device": that.idx,
+            "device": this.idx,
             "state": (powerOn)?"on":"off"
-          }});
+          }};
+    this.client.send(cmd, cb);
+  },
+
+  getPowerState: function(callback){
+    this.log("[PilightSwitch.getPowerState] Fetching power state for: " + this.name);
+    callback(null, this.powerState);
   },
 
   getServices: function() {
-    var that = this;
-    return [{
-      sType: types.ACCESSORY_INFORMATION_STYPE,
-      characteristics: [{
-        cType: types.NAME_CTYPE,
-        onUpdate: null,
-        perms: ["pr"],
-        format: "string",
-        initialValue: that.name,
-        supportEvents: false,
-        supportBonjour: false,
-        manfDescription: "Name of the accessory",
-        designedMaxLength: 255
-      },{
-        cType: types.MANUFACTURER_CTYPE,
-        onUpdate: null,
-        perms: ["pr"],
-        format: "string",
-        initialValue: "pilight",
-        supportEvents: false,
-        supportBonjour: false,
-        manfDescription: "Manufacturer",
-        designedMaxLength: 255
-      },{
-        cType: types.MODEL_CTYPE,
-        onUpdate: null,
-        perms: ["pr"],
-        format: "string",
-        initialValue: "Rev-1",
-        supportEvents: false,
-        supportBonjour: false,
-        manfDescription: "Model",
-        designedMaxLength: 255
-      },{
-        cType: types.SERIAL_NUMBER_CTYPE,
-        onUpdate: null,
-        perms: ["pr"],
-        format: "string",
-        initialValue: "BIVAB-PO-1",
-        supportEvents: false,
-        supportBonjour: false,
-        manfDescription: "SN",
-        designedMaxLength: 255
-      },{
-        cType: types.IDENTIFY_CTYPE,
-        onUpdate: null,
-        perms: ["pw"],
-        format: "bool",
-        initialValue: false,
-        supportEvents: false,
-        supportBonjour: false,
-        manfDescription: "Identify Accessory",
-        designedMaxLength: 1
-      }]
-    },{
-      sType: types.OUTLET_STYPE,
-      characteristics: [{
-        cType: types.NAME_CTYPE,
-        onUpdate: null,
-        perms: ["pr"],
-        format: "string",
-        initialValue: that.name + " outlet service",
-        supportEvents: true,
-        supportBonjour: false,
-        manfDescription: "Name of service",
-        designedMaxLength: 255
-      },{
-        cType: types.POWER_STATE_CTYPE,
-        onUpdate: function(value) { that.setPowerState(value)},
-        onRegister: function(characteristic) { that.registerForUpdates(characteristic) },
-        perms: ["pw","pr","ev"],
-        format: "bool",
-        initialValue: (this.state==='on')?1:0,
-        supportEvents: true,
-        supportBonjour: false,
-        manfDescription: "Change the power state of the outlet",
-        designedMaxLength: 1
-      },{
-        cType: types.OUTLET_IN_USE_CTYPE,
-        onUpdate: function(value) { that.setPowerState(value)},
-        perms: ["pr","ev"],
-        format: "bool",
-        initialValue: true,
-        supportEvents: false,
-        supportBonjour: false,
-        manfDescription: "Turn On the Light",
-        designedMaxLength: 1
-      }]
-    }];
+    var outletService = new Service.Outlet();
+    var informationService = new Service.AccessoryInformation();
+    var model;
+
+    informationService
+      .setCharacteristic(Characteristic.Manufacturer, "pilight")
+      .setCharacteristic(Characteristic.Model, "Outlet Rev-2")
+      .setCharacteristic(Characteristic.SerialNumber, "BIVAB-PO-1");
+
+    outletService.getCharacteristic(Characteristic.On)
+            .on('get', this.getPowerState.bind(this))
+            .on('set', this.setPowerState.bind(this));
+    return [informationService, outletService];
   }
 };
 
 // XXX refactory and merge with Switch
-function PilightThermostat(log, idx, name, protocol, info, client) {
+function PilightTemperatureSensor(log, idx, name, protocol, info, client) {
   // device info
   log("Name: "+idx);
   this.idx = idx;
   this.name = name;
   this.log = log;
   this.client = client;
-  this.registry = [];
   this.info = info;
   this.protocol = protocol;
+  this.registerForUpdates(idx, this);
 }
 
 
 // XXX merge with Switch prototype and extract common prototype
-PilightThermostat.prototype = {
+PilightTemperatureSensor.prototype = {
 
-  registerForUpdates: function(characteristic) {
-    this.log("[PilightThermostat.registerForUpdates] Registering device "+this.idx
-             + " for updates on characteristic '"+characteristic.manfDescription+"'");
-
-    this.registry.push(characteristic);
+  registerForUpdates: function() {
+    this.log("[PilightTemperatureSensor.registerForUpdates] Registering device "+this.idx
+             + " for updates");
     this.client.register(this.idx, this);
   },
 
-  updateCharacteristics: function(values) {
+  update: function(values) {
     var newValue;
-    for(var c of this.registry) {
-      switch(c.type) {
-        case types.CURRENT_TEMPERATURE_CTYPE:
-          newValue = values['temperature'];
-          break;
-        case types.CURRENT_RELATIVE_HUMIDITY_CTYPE:
-          newValue = values['humidity'];
-          break;
-      }
-      if(newValue === undefined || c.value === newValue) {
-        this.log("[PilightThermostat.updateCharacteristics] No state change "
-                 + "detected on characteristic, skiping event");
-        continue;
-      }
-      this.log("[PilightThermostat.updateCharacteristics] Updating device "
-               +this.name + " to value "+newValue+" on characteristic '"
-               +JSON.stringify(c.manfDescription)+"'");
+    console.log(values);
+    if(values === undefined) {
+      return;
     }
-    c.updateValue(newValue);
+    this.info = values;
+  },
+
+  getCurrentTemperature: function(callback)  {
+    var temp = parseFloat(this.info["temperature"]);
+    callback(null, temp);
   },
 
   getServices: function() {
-    var that = this;
-    return [{
-      sType: types.ACCESSORY_INFORMATION_STYPE,
-      characteristics: [{
-        cType: types.NAME_CTYPE,
-        onUpdate: null,
-        perms: ["pr"],
-        format: "string",
-        initialValue: that.name + "Thermostat 1",
-        supportEvents: false,
-        supportBonjour: false,
-        manfDescription: "Bla",
-        designedMaxLength: 255
-        },{
-        cType: types.MANUFACTURER_CTYPE,
-        onUpdate: null,
-        perms: ["pr"],
-        format: "string",
-        initialValue: "Oltica",
-        supportEvents: false,
-        supportBonjour: false,
-        manfDescription: "Bla",
-        designedMaxLength: 255
-        },{
-        cType: types.MODEL_CTYPE,
-        onUpdate: null,
-        perms: ["pr"],
-        format: "string",
-        initialValue: "Rev-1",
-        supportEvents: false,
-        supportBonjour: false,
-        manfDescription: "Bla",
-        designedMaxLength: 255
-        },{
-        cType: types.SERIAL_NUMBER_CTYPE,
-        onUpdate: null,
-        perms: ["pr"],
-        format: "string",
-        initialValue: "A1S2NASF88EW",
-        supportEvents: false,
-        supportBonjour: false,
-        manfDescription: "Bla",
-        designedMaxLength: 255
-        },{
-        cType: types.IDENTIFY_CTYPE,
-        onUpdate: null,
-        perms: ["pw"],
-        format: "bool",
-        initialValue: false,
-        supportEvents: false,
-        supportBonjour: false,
-        manfDescription: "Identify Accessory",
-        designedMaxLength: 1
-      }]
-      },{
-      sType: types.THERMOSTAT_STYPE,
-      characteristics: [{
-          cType: types.NAME_CTYPE,
-          onUpdate: null,
-          perms: ["pr"],
-          format: "string",
-          initialValue: that.name + "Thermostat Control",
-          supportEvents: false,
-          supportBonjour: false,
-          manfDescription: "Bla",
-          designedMaxLength: 255
-        },{
-          cType: types.CURRENTHEATINGCOOLING_CTYPE,
-          perms: ["pr","ev"],
-          format: "int",
-          initialValue: 0,
-          supportEvents: false,
-          supportBonjour: false,
-          manfDescription: "Current Mode",
-          designedMaxLength: 1,
-          designedMinValue: 0,
-          designedMaxValue: 2,
-          designedMinStep: 1,
-        },{
-          cType: types.TARGETHEATINGCOOLING_CTYPE,
-          perms: ["pr","ev"],
-          format: "int",
-          initialValue: 0,
-          supportEvents: false,
-          supportBonjour: false,
-          manfDescription: "Target Mode",
-          designedMinValue: 0,
-          designedMaxValue: 3,
-          designedMinStep: 1,
-        },{
-          cType: types.CURRENT_TEMPERATURE_CTYPE,
-          onRegister: function(characteristic) { that.registerForUpdates(characteristic) },
-          onUpdate: null,
-          perms: ["pr","ev"],
-          format: "int",
-          initialValue: parseFloat(that.info['temperature']),
-          supportEvents: false,
-          supportBonjour: false,
-          manfDescription: "Current Temperature",
-          unit: "celsius"
-        },{
-          cType: types.TARGET_TEMPERATURE_CTYPE,
-          onUpdate: null,
-          perms: ["pr","ev"],
-          format: "int",
-          initialValue: parseFloat(that.info['temperature']),
-          supportEvents: false,
-          supportBonjour: false,
-          manfDescription: "Target Temperature",
-          designedMinValue: 16,
-          designedMaxValue: 38,
-          designedMinStep: 1,
-          unit: "celsius"
-        },{
-          cType: types.CURRENT_RELATIVE_HUMIDITY_CTYPE,
-          onRegister: function(characteristic) { that.registerForUpdates(characteristic) },
-          onUpdate: null,
-          perms: ["pr","ev"],
-          format: "float",
-          initialValue: parseFloat(that.info['humidity']),
-          supportEvents: false,
-          supportBonjour: false,
-          manfDescription: "Current relative humidity",
-          unit: "percentage",
-          designedMinValue: 0,
-          designedMaxValue: 100,
-          designedMinStep: 1
-        },{
-          cType: types.TEMPERATURE_UNITS_CTYPE,
-          perms: ["pr","ev"],
-          format: "int",
-          initialValue: 0,
-          supportEvents: false,
-          supportBonjour: false,
-          manfDescription: "Unit",
-        }]
-      }];
+    var service = new Service.TemperatureSensor();
+    var informationService = new Service.AccessoryInformation();
+
+
+    informationService
+      .setCharacteristic(Characteristic.Manufacturer, "pilight")
+      .setCharacteristic(Characteristic.Model, "Thermostat Rev-2")
+      .setCharacteristic(Characteristic.SerialNumber, "BIVAB-TEMP-2");
+
+    service.getCharacteristic(Characteristic.CurrentTemperature).on(
+      'get', this.getCurrentTemperature.bind(this));
+
+    return [informationService, service];
   }
 };
-module.exports.accessory = [PilightSwitch, PilightThermostat];
+module.exports.accessory = PilightSwitch;
+module.exports.accessory = PilightTemperatureSensor;
 module.exports.platform = PilightPlatform;
